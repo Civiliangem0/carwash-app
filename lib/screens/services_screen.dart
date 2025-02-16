@@ -62,7 +62,7 @@ class ServicesScreen extends StatelessWidget {
                           topRight: Radius.circular(12),
                         ),
                         child: Image.asset(
-                          'assets/images/car_wash.png',
+                          'assets/images/car_wash2.png',
                           fit: BoxFit.cover,
                         ),
                       ),
