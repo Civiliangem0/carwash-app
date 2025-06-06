@@ -9,17 +9,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:carwash_app/main.dart';
+import 'package:carwash_app/services/api_service.dart';
 
 void main() {
   testWidgets('App renders successfully', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
+    final apiService = ApiService();
 
     // Build our app and trigger a frame.
-    await tester.pumpWidget(CarWashApp(prefs: prefs));
+    await tester.pumpWidget(CarWashApp(prefs: prefs, apiService: apiService));
 
-    // Verify that the services screen is shown
-    expect(find.text('Choose Services'), findsOneWidget);
-    expect(find.text('Self-Serve Car Wash'), findsOneWidget);
+    // Verify that the login screen is shown (since we're not authenticated)
+    expect(find.text('Login'), findsOneWidget);
   });
 }

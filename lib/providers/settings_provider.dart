@@ -40,4 +40,12 @@ class SettingsProvider with ChangeNotifier {
   String get lastUpdated =>
       _locale.languageCode == 'sv' ? 'Senast uppdaterad' : 'Last updated';
   String get bay => _locale.languageCode == 'sv' ? 'Plats' : 'Bay';
+  String get username =>
+      _locale.languageCode == 'sv' ? 'Användarnamn' : 'Username';
+  String get password => _locale.languageCode == 'sv' ? 'Lösenord' : 'Password';
+  String get login => _locale.languageCode == 'sv' ? 'Logga in' : 'Login';
+  String get register =>
+      _locale.languageCode == 'sv' ? 'Registrera' : 'Register';
+  String get continueAsGuest =>
+      _locale.languageCode == 'sv' ? 'Fortsätt som gäst' : 'Continue as Guest';
 }

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/station.dart';
 import '../widgets/station_card.dart';
 import '../providers/settings_provider.dart';
+import '../services/api_service.dart';
 
 class StatusScreen extends StatefulWidget {
   const StatusScreen({Key? key}) : super(key: key);
@@ -12,8 +13,9 @@ class StatusScreen extends StatefulWidget {
 }
 
 class _StatusScreenState extends State<StatusScreen> {
-  late List<Station> stations;
+  late List<Station> stations = [];
   DateTime lastUpdated = DateTime.now();
+  bool isLoading = true;
 
   @override
   void initState() {
@@ -21,25 +23,56 @@ class _StatusScreenState extends State<StatusScreen> {
     _initializeStations();
   }
 
-  void _initializeStations() {
-    stations = List.generate(
-      4,
-      (index) => Station(
-        id: index + 1,
-        status: StationStatus.values[index % 3],
-        lastUpdated: DateTime.now(),
-      ),
-    );
+  Future<void> _initializeStations() async {
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      // Get the ApiService from the provider
+      final apiService = Provider.of<ApiService>(context, listen: false);
+
+      // Fetch stations from the API
+      final fetchedStations = await apiService.getStationStatuses();
+
+      setState(() {
+        stations = fetchedStations;
+        lastUpdated = DateTime.now();
+        isLoading = false;
+      });
+    } catch (e) {
+      print('Error fetching stations: $e');
+      // Fallback to mock data if API fails
+      setState(() {
+        stations = List.generate(
+          4,
+          (index) => Station(
+            id: index + 1,
+            status: StationStatus.values[index % 3],
+            lastUpdated: DateTime.now(),
+          ),
+        );
+        isLoading = false;
+      });
+    }
   }
 
   Future<void> _refreshStations() async {
-    // Simulate network delay
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final fetchedStations = await apiService.getStationStatuses();
 
-    setState(() {
-      _initializeStations();
-      lastUpdated = DateTime.now();
-    });
+      setState(() {
+        stations = fetchedStations;
+        lastUpdated = DateTime.now();
+      });
+    } catch (e) {
+      print('Error refreshing stations: $e');
+      // Show error message to user
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to refresh stations')));
+    }
   }
 
   String _getLastUpdatedText() {
@@ -73,13 +106,18 @@ class _StatusScreenState extends State<StatusScreen> {
         child: Column(
           children: [
             Expanded(
-              child: ListView.builder(
-                physics: const AlwaysScrollableScrollPhysics(),
-                itemCount: stations.length,
-                itemBuilder: (context, index) {
-                  return StationCard(station: stations[index]);
-                },
-              ),
+              child:
+                  isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : stations.isEmpty
+                      ? Center(child: Text('No stations available'))
+                      : ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        itemCount: stations.length,
+                        itemBuilder: (context, index) {
+                          return StationCard(station: stations[index]);
+                        },
+                      ),
             ),
             Padding(
               padding: const EdgeInsets.all(16),

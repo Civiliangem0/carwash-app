@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Car Wash Admin Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        header {
+            background-color: #333;
+            color: white;
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 {
+            margin: 0;
+        }
+        .logout-btn {
+            background-color: #d9534f;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .bay-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .bay-card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+        .bay-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        .bay-title {
+            font-size: 1.25rem;
+            font-weight: bold;
+            margin: 0;
+        }
+        .status-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            font-weight: bold;
+        }
+        .status-available {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-in-use {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .status-out-of-service {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status-error {
+            background-color: #cce5ff;
+            color: #004085;
+        }
+        .bay-details {
+            margin-top: 1rem;
+            font-size: 0.875rem;
+        }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+        .detail-label {
+            color: #666;
+        }
+        .system-info {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        .refresh-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 1rem;
+        }
+        .refresh-btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .last-updated {
+            font-size: 0.875rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Car Wash Admin Dashboard</h1>
+        <a href="/admin/logout" class="logout-btn">Logout</a>
+    </header>
+    
+    <div class="container">
+        <div class="refresh-container">
+            <button id="refresh-btn" class="refresh-btn">Refresh Data</button>
+            <span class="last-updated" id="last-updated">Last updated: Just now</span>
+        </div>
+        
+        <div class="bay-grid" id="bay-grid">
+            <!-- Bay cards will be inserted here by JavaScript -->
+        </div>
+        
+        <div class="system-info">
+            <h2>System Information</h2>
+            <div class="detail-row">
+                <span class="detail-label">Server Status:</span>
+                <span id="server-status">Running</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Uptime:</span>
+                <span id="uptime">0 minutes</span>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Start time for uptime calculation
+        const startTime = new Date();
+        
+        // Function to format date
+        function formatDate(date) {
+            return date.toLocaleTimeString();
+        }
+        
+        // Function to update uptime
+        function updateUptime() {
+            const now = new Date();
+            const diff = Math.floor((now - startTime) / 1000 / 60);
+            document.getElementById('uptime').textContent = `${diff} minutes`;
+        }
+        
+        // Function to get status class
+        function getStatusClass(status) {
+            switch(status) {
+                case 'available':
+                    return 'status-available';
+                case 'inUse':
+                    return 'status-in-use';
+                case 'outOfService':
+                    return 'status-out-of-service';
+                case 'connectionError':
+                    return 'status-error';
+                default:
+                    return '';
+            }
+        }
+        
+        // Function to get status text
+        function getStatusText(status) {
+            switch(status) {
+                case 'available':
+                    return 'Available';
+                case 'inUse':
+                    return 'In Use';
+                case 'outOfService':
+                    return 'Out of Service';
+                case 'connectionError':
+                    return 'Connection Error';
+                default:
+                    return status;
+            }
+        }
+        
+        // Function to fetch bay data
+        async function fetchBayData() {
+            try {
+                const response = await fetch('/api/admin/bays');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Error fetching bay data:', error);
+                return [];
+            }
+        }
+        
+        // Function to update bay grid
+        async function updateBayGrid() {
+            const bayGrid = document.getElementById('bay-grid');
+            const bays = await fetchBayData();
+            
+            // Clear existing content
+            bayGrid.innerHTML = '';
+            
+            // Add bay cards
+            bays.forEach(bay => {
+                const bayCard = document.createElement('div');
+                bayCard.className = 'bay-card';
+                
+                const lastUpdated = new Date(bay.lastUpdated);
+                
+                bayCard.innerHTML = `
+                    <div class="bay-header">
+                        <h2 class="bay-title">Bay ${bay.id}</h2>
+                        <span class="status-badge ${getStatusClass(bay.status)}">${getStatusText(bay.status)}</span>
+                    </div>
+                    <div class="bay-details">
+                        <div class="detail-row">
+                            <span class="detail-label">Connection:</span>
+                            <span>${bay.isConnected ? 'Connected' : 'Disconnected'}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Last Updated:</span>
+                            <span>${formatDate(lastUpdated)}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Detection Confidence:</span>
+                            <span>${(bay.detectionConfidence * 100).toFixed(1)}%</span>
+                        </div>
+                    </div>
+                `;
+                
+                bayGrid.appendChild(bayCard);
+            });
+            
+            // Update last updated time
+            document.getElementById('last-updated').textContent = `Last updated: ${formatDate(new Date())}`;
+        }
+        
+        // Initial update
+        updateBayGrid();
+        
+        // Set up refresh button
+        document.getElementById('refresh-btn').addEventListener('click', updateBayGrid);
+        
+        // Set up auto-refresh every 5 seconds
+        setInterval(updateBayGrid, 5000);
+        
+        // Update uptime every minute
+        setInterval(updateUptime, 60000);
+        updateUptime();
+    </script>
+</body>
+</html>
