@@ -17,9 +17,9 @@ class ApiService {
     // For Android emulators, localhost should be 10.0.2.2
     // This is a special IP that Android emulators use to communicate with the host machine
     if (Platform.isAndroid) {
-      baseUrl = 'http://10.0.2.2://10.0.2.2';
-    } else {
       baseUrl = 'http://10.0.2.2:5000/api';
+    } else {
+      baseUrl = 'http://localhost:5000/api';
     }
   }
 
