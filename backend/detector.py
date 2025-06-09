@@ -14,12 +14,12 @@ class VehicleDetector:
     """
     Class for detecting vehicles in images using YOLOv4 model.
     """
-    # Vehicle-related class IDs in COCO dataset
-    VEHICLE_CLASSES = [2, 3, 5, 6, 7, 8]  # car, motorbike, bus, train, truck, boat
+    # Vehicle-related class IDs in COCO dataset - Only cars for car wash detection
+    VEHICLE_CLASSES = [2]  # car only (removing motorbike, bus, train, truck, boat)
     
     def __init__(self, config_path, weights_path, names_path, 
-                 confidence_threshold=0.3, nms_threshold=0.4, 
-                 min_box_area=1000, max_box_area_ratio=0.9):
+                 confidence_threshold=0.5, nms_threshold=0.4, 
+                 min_box_area=2000, max_box_area_ratio=0.8):
         """
         Initialize the vehicle detector with YOLOv4 model.
         
@@ -111,9 +111,9 @@ class VehicleDetector:
                 # Final confidence is objectness * class_probability
                 confidence = objectness * class_prob
                 
-                # Debug: Log all detections for vehicle classes
-                if class_id in self.VEHICLE_CLASSES:
-                    logger.info(f"Vehicle candidate: {self.classes[class_id]} - "
+                # Debug: Log car detections only  
+                if class_id in self.VEHICLE_CLASSES and confidence > 0.3:
+                    logger.info(f"Car candidate: {self.classes[class_id]} - "
                               f"Objectness: {objectness:.3f}, Class prob: {class_prob:.3f}, "
                               f"Final confidence: {confidence:.3f}")
                 
