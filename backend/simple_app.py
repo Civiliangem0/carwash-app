@@ -162,8 +162,14 @@ def update_bay_statuses():
                         # Add connection indicator
                         connection_status = "🟢" if bay_status.get('isConnected', False) else "🔴"
                         status_summary.append(f"Bay {bay_id}: {emoji} {display_status} {connection_status}")
+                    else:
+                        # Bay status is None - add debug info
+                        status_summary.append(f"Bay {bay_id}: ❓ NoStatus")
                 
-                logger.info(f"🏪 BAY STATUS SUMMARY: {' | '.join(status_summary)}")
+                if status_summary:
+                    logger.info(f"🏪 BAY STATUS SUMMARY: {' | '.join(status_summary)}")
+                else:
+                    logger.warning("🏪 BAY STATUS SUMMARY: No bay statuses available")
                 last_status_log = current_time
             
             # Sleep to control update rate
