@@ -64,8 +64,9 @@ class SimpleRTSPStreamProcessor:
                 self.is_connected = False
                 return False
             
-            # Set buffer size and timeout
+            # Set buffer size and timeout to reduce H.264 frame errors
             self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            self.cap.set(cv2.CAP_PROP_FPS, 10)  # Limit to 10 FPS to reduce bandwidth issues
             
             # Update connection state
             self.is_connected = True
@@ -162,6 +163,7 @@ class SimpleRTSPStreamProcessor:
                     self.detection_confidence = confidence
                     if detected:
                         self.last_detection_time = datetime.now()
+                        logger.debug(f"Bay {self.bay_id}: Car detected (conf: {confidence:.2f})")
                     
             except Exception as e:
                 logger.error(f"Error detecting cars for Bay {self.bay_id}: {str(e)}")

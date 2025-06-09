@@ -105,9 +105,11 @@ class BayTracker:
             if vehicle_detected:
                 bay['consecutive_detections'] += 1
                 bay['consecutive_non_detections'] = 0
+                logger.debug(f"Bay {bay_id}: Vehicle detected, consecutive count: {bay['consecutive_detections']}/{self.status_change_threshold}")
             else:
                 bay['consecutive_detections'] = 0
                 bay['consecutive_non_detections'] += 1
+                logger.debug(f"Bay {bay_id}: No vehicle, consecutive empty count: {bay['consecutive_non_detections']}/{self.status_change_threshold}")
             
             # Update bay status based on detection counters
             current_status = bay['status']
@@ -128,7 +130,9 @@ class BayTracker:
             if new_status != current_status:
                 bay['status'] = new_status
                 bay['last_updated'] = datetime.now()
-                logger.info(f"Bay {bay_id} status changed from {current_status.value} to {new_status.value}")
+                logger.info(f"🔄 Bay {bay_id} status changed from {current_status.value} to {new_status.value}")
+            else:
+                logger.debug(f"Bay {bay_id}: Status remains {current_status.value} (cons_det: {bay['consecutive_detections']}, cons_empty: {bay['consecutive_non_detections']})")
     
     def get_bay_status(self, bay_id):
         """

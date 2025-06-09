@@ -102,13 +102,16 @@ class SimpleCarDetector:
         car_detected = len(significant_contours) > 0 and confidence > 0.1
         
         if car_detected:
-            logger.info(f"{bay_prefix}🚗 Car detected! Confidence: {confidence:.2f}, "
-                       f"Objects: {len(significant_contours)}, Area: {total_area}")
+            # Only log significant confidence changes to reduce spam
+            if not hasattr(self, '_last_logged_confidence') or abs(confidence - self._last_logged_confidence) > 0.2:
+                logger.info(f"{bay_prefix}🚗 Car detected! Confidence: {confidence:.2f}")
+                self._last_logged_confidence = confidence
             self.last_detection_time = datetime.now()
         else:
             # Only log occasionally to avoid spam
-            if self.frame_count % 50 == 0:
+            if self.frame_count % 100 == 0:
                 logger.debug(f"{bay_prefix}Bay empty (conf: {confidence:.2f})")
+            self._last_logged_confidence = 0.0
         
         return car_detected, confidence
     

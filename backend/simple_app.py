@@ -17,9 +17,9 @@ from bay_tracker import BayTracker, BayStatus
 from auth import init_jwt, register_auth_routes
 from admin_dashboard import init_admin_dashboard
 
-# Configure logging
+# Configure logging - Enable debug for troubleshooting
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger('simple_app')
@@ -32,8 +32,8 @@ RTSP_URLS = {
     4: os.environ.get('RTSP_URL_4', 'rtsp://192.168.1.74:7447/BSPtMFwAXLncNdx0')
 }
 
-# Detection parameters - Much simpler now!
-STATUS_CHANGE_THRESHOLD = int(os.environ.get('STATUS_CHANGE_THRESHOLD', '3'))
+# Detection parameters - Much simpler now! Lower threshold for faster response
+STATUS_CHANGE_THRESHOLD = int(os.environ.get('STATUS_CHANGE_THRESHOLD', '2'))
 
 # Create Flask app
 app = Flask(__name__)
@@ -118,6 +118,10 @@ def update_bay_statuses():
         try:
             for bay_id, processor in stream_processors.items():
                 status = processor.get_status()
+                
+                # Debug logging to understand status updates
+                if status['vehicle_detected']:
+                    logger.debug(f"Updating Bay {bay_id}: vehicle_detected=True, connected={status['is_connected']}, conf={status['detection_confidence']:.2f}")
                 
                 bay_tracker.update_bay_status(
                     bay_id=bay_id,
