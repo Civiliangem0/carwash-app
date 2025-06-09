@@ -112,7 +112,9 @@ def stop_stream_processors():
 
 def update_bay_statuses():
     """Update bay statuses based on simple stream processor results."""
+    logger.info("🔄 Bay status update thread is RUNNING!")
     last_status_log = 0
+    loop_count = 0
     while True:
         try:
             for bay_id, processor in stream_processors.items():
@@ -173,10 +175,15 @@ def update_bay_statuses():
                 last_status_log = current_time
             
             # Sleep to control update rate
+            loop_count += 1
+            if loop_count % 30 == 0:  # Log every 30 seconds to confirm thread is alive
+                logger.info(f"🔄 Bay status thread alive - loop #{loop_count}")
             time.sleep(1)
             
         except Exception as e:
-            logger.error(f"Error updating bay statuses: {str(e)}")
+            logger.error(f"💥 CRITICAL ERROR in bay status update thread: {str(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             time.sleep(5)  # Wait longer on error
 
 # API routes (same as before)
@@ -327,9 +334,11 @@ if __name__ == '__main__':
         health_monitor.start_monitoring()
     
     # Start bay status update thread
+    logger.info("🚀 Starting bay status update thread...")
     update_thread = threading.Thread(target=update_bay_statuses)
     update_thread.daemon = True
     update_thread.start()
+    logger.info("✅ Bay status update thread started")
     
     try:
         # Start Flask app
