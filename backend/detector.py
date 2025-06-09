@@ -5,7 +5,7 @@ import logging
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Enable debug logging
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger('detector')
@@ -18,8 +18,8 @@ class VehicleDetector:
     VEHICLE_CLASSES = [2, 3, 5, 6, 7, 8]  # car, motorbike, bus, train, truck, boat
     
     def __init__(self, config_path, weights_path, names_path, 
-                 confidence_threshold=0.7, nms_threshold=0.4, 
-                 min_box_area=5000, max_box_area_ratio=0.8):
+                 confidence_threshold=0.3, nms_threshold=0.4, 
+                 min_box_area=1000, max_box_area_ratio=0.9):
         """
         Initialize the vehicle detector with YOLOv4 model.
         
@@ -111,9 +111,11 @@ class VehicleDetector:
                 # Final confidence is objectness * class_probability
                 confidence = objectness * class_prob
                 
-                # Debug: Log confidence calculation
-                logger.debug(f"Objectness: {objectness:.3f}, Class prob: {class_prob:.3f}, "
-                           f"Final: {confidence:.3f} for {self.classes[class_id]}")
+                # Debug: Log all detections for vehicle classes
+                if class_id in self.VEHICLE_CLASSES:
+                    logger.info(f"Vehicle candidate: {self.classes[class_id]} - "
+                              f"Objectness: {objectness:.3f}, Class prob: {class_prob:.3f}, "
+                              f"Final confidence: {confidence:.3f}")
                 
                 # Filter for vehicle classes and confidence threshold
                 if class_id in self.VEHICLE_CLASSES and confidence > self.confidence_threshold:
@@ -165,6 +167,12 @@ class VehicleDetector:
                 'confidence': confidence,
                 'box': box
             })
+        
+        # Log detection summary
+        if len(detections) > 0:
+            logger.info(f"Detected {len(detections)} vehicles after filtering")
+        else:
+            logger.info("No vehicles detected after filtering")
         
         # Return whether any vehicle was detected and the detections
         return len(detections) > 0, detections
