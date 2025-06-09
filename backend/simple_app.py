@@ -16,24 +16,15 @@ from simple_stream_processor import SimpleRTSPStreamProcessor
 from bay_tracker import BayTracker, BayStatus
 from auth import init_jwt, register_auth_routes
 from admin_dashboard import init_admin_dashboard
+from config import get_config, reload_config
+from health_monitor import get_health_monitor
 
-# Configure logging - Enable debug for troubleshooting
+# Configure logging - Info level for production
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger('simple_app')
-
-# RTSP stream URLs
-RTSP_URLS = {
-    1: os.environ.get('RTSP_URL_1', 'rtsp://192.168.1.74:7447/VJ1fB8D4d03nIwKF'),
-    2: os.environ.get('RTSP_URL_2', 'rtsp://192.168.1.74:7447/zfDlcWJLTq10A49M'),
-    3: os.environ.get('RTSP_URL_3', 'rtsp://192.168.1.74:7447/18JUhav6VfoOMVS0'),
-    4: os.environ.get('RTSP_URL_4', 'rtsp://192.168.1.74:7447/BSPtMFwAXLncNdx0')
-}
-
-# Detection parameters - Much simpler now! Lower threshold for faster response
-STATUS_CHANGE_THRESHOLD = int(os.environ.get('STATUS_CHANGE_THRESHOLD', '2'))
 
 # Create Flask app
 app = Flask(__name__)
@@ -52,26 +43,33 @@ register_auth_routes(app)
 # Global objects
 bay_tracker = None
 stream_processors = {}
+health_monitor = None
 start_time = datetime.now()
 
 def initialize_system():
-    """Initialize the simple car detection system."""
-    global bay_tracker, stream_processors
+    """Initialize the advanced car detection system."""
+    global bay_tracker, stream_processors, health_monitor
     
     try:
-        logger.info("🚀 Initializing SIMPLE car detection system...")
+        logger.info("🚀 Initializing ADVANCED car detection system...")
         
-        # Initialize bay tracker
-        logger.info("Initializing bay tracker...")
-        bay_tracker = BayTracker(
-            bay_count=len(RTSP_URLS),
-            status_change_threshold=STATUS_CHANGE_THRESHOLD
-        )
+        # Load configuration
+        config = get_config()
+        logger.info(f"Configuration loaded: {config.bay_count} bays, "
+                   f"thresholds: {config.status.available_to_inuse_threshold}→{config.status.inuse_to_available_threshold}")
         
-        # Initialize simple stream processors (no heavy YOLOv4!)
-        logger.info("Initializing simple stream processors...")
-        for bay_id, rtsp_url in RTSP_URLS.items():
-            logger.info(f"Creating simple detector for Bay {bay_id}...")
+        # Initialize bay tracker with configuration
+        logger.info("Initializing advanced bay tracker...")
+        bay_tracker = BayTracker()
+        
+        # Initialize health monitor
+        logger.info("Initializing health monitor...")
+        health_monitor = get_health_monitor()
+        
+        # Initialize stream processors with configuration
+        logger.info("Initializing advanced stream processors...")
+        for bay_id, rtsp_url in config.rtsp_urls.items():
+            logger.info(f"Creating advanced detector for Bay {bay_id}...")
             
             stream_processors[bay_id] = SimpleRTSPStreamProcessor(
                 bay_id=bay_id,
@@ -82,7 +80,8 @@ def initialize_system():
         logger.info("Initializing admin dashboard...")
         init_admin_dashboard(app, bay_tracker, stream_processors)
         
-        logger.info("✅ Simple system initialization complete - NO YOLOv4 NEEDED!")
+        logger.info("✅ Advanced system initialization complete!")
+        logger.info("🎯 Features: Asymmetric transitions, Auto-recovery, Health monitoring, Quality adaptation")
         return True
         
     except Exception as e:
@@ -131,14 +130,26 @@ def update_bay_statuses():
                     detection_confidence=status['detection_confidence']
                 )
             
-            # Log bay status summary every 20 seconds (less spam)
+            # Update health monitor
+            if health_monitor:
+                for bay_id, processor in stream_processors.items():
+                    status = processor.get_status()
+                    health_monitor.update_bay_health(bay_id, status)
+            
+            # Log bay status summary periodically
             current_time = time.time()
-            if current_time - last_status_log >= 20:
+            config = get_config()
+            if current_time - last_status_log >= config.status_log_interval:
                 status_summary = []
-                for bay_id in range(1, 5):
+                for bay_id in range(1, config.bay_count + 1):
                     bay_status = bay_tracker.get_bay_status(bay_id)
                     if bay_status:
-                        emoji = "🚗" if bay_status['status'] == 'inUse' else "🅿️"
+                        if bay_status['status'] == 'inUse':
+                            emoji = "🚗"
+                        elif bay_status['status'] == 'connectionError':
+                            emoji = "❌"
+                        else:
+                            emoji = "🅿️"
                         status_summary.append(f"Bay {bay_id}: {emoji} {bay_status['status']}")
                 
                 logger.info(f"🏪 BAY STATUS: {' | '.join(status_summary)}")
@@ -210,9 +221,76 @@ def reset_background(bay_id):
     """Reset background model for a specific bay (admin feature)."""
     if bay_id in stream_processors:
         stream_processors[bay_id].reset_background()
+        logger.info(f"🔄 Manual background reset for Bay {bay_id}")
         return jsonify({'message': f'Background reset for Bay {bay_id}'})
     else:
         return jsonify({'error': 'Invalid bay ID'}), 400
+
+@app.route('/api/bay/<int:bay_id>/force_available', methods=['POST'])
+def force_bay_available(bay_id):
+    """Force a bay to available status (manual override)."""
+    if bay_id in stream_processors and bay_tracker:
+        # Reset bay status
+        bay_tracker.set_bay_out_of_service(bay_id, False)  # Set to available
+        
+        # Reset background to help with detection
+        stream_processors[bay_id].reset_background()
+        
+        logger.info(f"🔧 Manual override: Bay {bay_id} forced to available")
+        return jsonify({'message': f'Bay {bay_id} forced to available status'})
+    else:
+        return jsonify({'error': 'Invalid bay ID'}), 400
+
+@app.route('/api/health', methods=['GET'])
+def get_health():
+    """Get comprehensive system health information."""
+    try:
+        if health_monitor:
+            health_summary = health_monitor.get_health_summary()
+            return jsonify(health_summary)
+        else:
+            return jsonify({'error': 'Health monitor not available'}), 503
+    except Exception as e:
+        logger.error(f"Error getting health info: {str(e)}")
+        return jsonify({'error': 'Health check failed'}), 500
+
+@app.route('/api/config', methods=['GET'])
+def get_config_api():
+    """Get current system configuration."""
+    try:
+        config = get_config()
+        return jsonify({
+            'detection': {
+                'learning_rate': config.detection.learning_rate,
+                'min_contour_area': config.detection.min_contour_area,
+                'bay_center_ratio': config.detection.bay_center_ratio,
+                'confidence_threshold': config.detection.confidence_threshold
+            },
+            'status': {
+                'available_to_inuse_threshold': config.status.available_to_inuse_threshold,
+                'inuse_to_available_threshold': config.status.inuse_to_available_threshold,
+                'connection_grace_period': config.status.connection_grace_period
+            },
+            'rtsp': {
+                'max_reconnect_attempts': config.rtsp.max_reconnect_attempts,
+                'base_reconnect_interval': config.rtsp.base_reconnect_interval,
+                'target_fps': config.rtsp.target_fps
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error getting config: {str(e)}")
+        return jsonify({'error': 'Config retrieval failed'}), 500
+
+@app.route('/api/config/reload', methods=['POST'])
+def reload_config_api():
+    """Reload configuration from environment variables."""
+    try:
+        new_config = reload_config()
+        logger.info("📝 Configuration reloaded from environment variables")
+        return jsonify({'message': 'Configuration reloaded successfully'})
+    except Exception as e:
+        logger.error(f"Error reloading config: {str(e)}")
+        return jsonify({'error': 'Config reload failed'}), 500
 
 # Main entry point
 if __name__ == '__main__':
@@ -226,6 +304,10 @@ if __name__ == '__main__':
     
     # Start stream processors
     start_stream_processors()
+    
+    # Start health monitoring
+    if health_monitor:
+        health_monitor.start_monitoring()
     
     # Start bay status update thread
     update_thread = threading.Thread(target=update_bay_statuses)
@@ -242,6 +324,10 @@ if __name__ == '__main__':
         logger.info("Received keyboard interrupt, shutting down")
     
     finally:
+        # Stop health monitoring
+        if health_monitor:
+            health_monitor.stop_monitoring()
+        
         # Stop stream processors
         stop_stream_processors()
         logger.info("Application shutdown complete")

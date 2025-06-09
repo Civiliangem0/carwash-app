@@ -2,6 +2,7 @@ import logging
 import threading
 from datetime import datetime, timedelta
 from enum import Enum
+from config import get_config
 
 # Configure logging
 logging.basicConfig(
@@ -21,24 +22,27 @@ class BayStatus(Enum):
 
 class BayTracker:
     """
-    Class for tracking the status of car wash bays.
+    Advanced bay tracker with asymmetric transitions and connection error recovery.
     """
-    def __init__(self, bay_count=4, status_change_threshold=5, error_timeout=30):
+    def __init__(self, bay_count=None):
         """
-        Initialize the bay tracker.
+        Initialize the bay tracker with configuration-based settings.
+        """
+        config = get_config()
         
-        Args:
-            bay_count: Number of bays to track
-            status_change_threshold: Number of consecutive detections needed to change status
-            error_timeout: Time in seconds after which to mark a bay as having connection error
-        """
-        self.bay_count = bay_count
-        self.status_change_threshold = status_change_threshold
-        self.error_timeout = error_timeout
+        self.bay_count = bay_count or config.bay_count
+        
+        # Asymmetric thresholds for hysteresis (prevents status flickering)
+        self.available_to_inuse_threshold = config.status.available_to_inuse_threshold  # Fast: 2 detections
+        self.inuse_to_available_threshold = config.status.inuse_to_available_threshold  # Slow: 8 detections
+        
+        # Connection management
+        self.frame_timeout = config.status.frame_timeout
+        self.connection_grace_period = config.status.connection_grace_period
         
         # Initialize bay statuses
         self.bays = {}
-        for bay_id in range(1, bay_count + 1):
+        for bay_id in range(1, self.bay_count + 1):
             self.bays[bay_id] = {
                 'status': BayStatus.AVAILABLE,
                 'last_updated': datetime.now(),
@@ -46,25 +50,22 @@ class BayTracker:
                 'consecutive_non_detections': 0,
                 'last_frame_time': None,
                 'detection_confidence': 0.0,
-                'is_connected': False
+                'is_connected': False,
+                'last_connection_time': None,      # Track when connection was established
+                'last_disconnection_time': None,   # Track when connection was lost
+                'connection_recovery_pending': False  # Flag for recovery state
             }
         
         # Thread safety
         self.lock = threading.Lock()
         
-        logger.info(f"Bay tracker initialized with {bay_count} bays")
+        logger.info(f"Bay tracker initialized with {self.bay_count} bays")
+        logger.info(f"Asymmetric thresholds: available→inUse={self.available_to_inuse_threshold}, inUse→available={self.inuse_to_available_threshold}")
     
     def update_bay_status(self, bay_id, vehicle_detected, is_connected, 
                          last_frame_time=None, detection_confidence=0.0):
         """
-        Update the status of a bay based on vehicle detection.
-        
-        Args:
-            bay_id: ID of the bay to update
-            vehicle_detected: Boolean indicating if a vehicle was detected
-            is_connected: Boolean indicating if the stream is connected
-            last_frame_time: Timestamp of the last frame processed
-            detection_confidence: Confidence of the detection
+        Advanced bay status update with connection recovery and asymmetric transitions.
         """
         if bay_id not in self.bays:
             logger.error(f"Invalid bay ID: {bay_id}")
@@ -72,8 +73,10 @@ class BayTracker:
         
         with self.lock:
             bay = self.bays[bay_id]
+            current_time = datetime.now()
             
-            # Update connection status
+            # Track connection state changes
+            was_connected = bay['is_connected']
             bay['is_connected'] = is_connected
             
             # Update frame time if provided
@@ -83,56 +86,97 @@ class BayTracker:
             # Update detection confidence
             bay['detection_confidence'] = detection_confidence
             
-            # Check for connection error
+            # Handle connection state changes
+            if is_connected and not was_connected:
+                # Connection recovered!
+                bay['last_connection_time'] = current_time
+                bay['connection_recovery_pending'] = True
+                logger.info(f"🔌 Bay {bay_id} connection RECOVERED")
+                
+            elif not is_connected and was_connected:
+                # Connection lost
+                bay['last_disconnection_time'] = current_time
+                bay['connection_recovery_pending'] = False
+                logger.warning(f"⚠️ Bay {bay_id} connection LOST")
+            
+            # Handle disconnected streams
             if not is_connected:
                 if bay['status'] != BayStatus.CONNECTION_ERROR:
                     bay['status'] = BayStatus.CONNECTION_ERROR
-                    bay['last_updated'] = datetime.now()
+                    bay['last_updated'] = current_time
                     logger.warning(f"Bay {bay_id} marked as CONNECTION_ERROR due to stream disconnection")
                 return
             
-            # Check for frame timeout
+            # Handle frame timeout (even when "connected")
             if bay['last_frame_time'] is not None:
-                time_since_last_frame = datetime.now() - bay['last_frame_time']
-                if time_since_last_frame.total_seconds() > self.error_timeout:
+                time_since_last_frame = current_time - bay['last_frame_time']
+                if time_since_last_frame.total_seconds() > self.frame_timeout:
                     if bay['status'] != BayStatus.CONNECTION_ERROR:
                         bay['status'] = BayStatus.CONNECTION_ERROR
-                        bay['last_updated'] = datetime.now()
+                        bay['last_updated'] = current_time
                         logger.warning(f"Bay {bay_id} marked as CONNECTION_ERROR due to frame timeout")
                     return
+            
+            # ✅ CONNECTION IS GOOD - Handle status recovery and detection logic
+            current_status = bay['status']
+            new_status = current_status
+            
+            # CRITICAL FIX: Auto-recover from CONNECTION_ERROR when stream is working
+            if current_status == BayStatus.CONNECTION_ERROR and is_connected:
+                # Apply grace period to avoid immediate flip-flopping
+                if (bay['last_connection_time'] and 
+                    (current_time - bay['last_connection_time']).total_seconds() >= self.connection_grace_period):
+                    
+                    new_status = BayStatus.AVAILABLE
+                    bay['consecutive_detections'] = 0
+                    bay['consecutive_non_detections'] = 0
+                    bay['connection_recovery_pending'] = False
+                    logger.info(f"🚀 Bay {bay_id} AUTO-RECOVERED from connectionError → available")
+            
+            # Skip detection logic during recovery grace period
+            if bay['connection_recovery_pending'] and bay['last_connection_time']:
+                grace_elapsed = (current_time - bay['last_connection_time']).total_seconds()
+                if grace_elapsed < self.connection_grace_period:
+                    logger.debug(f"Bay {bay_id}: In recovery grace period ({grace_elapsed:.1f}s/{self.connection_grace_period}s)")
+                    return
+                else:
+                    bay['connection_recovery_pending'] = False
             
             # Update detection counters
             if vehicle_detected:
                 bay['consecutive_detections'] += 1
                 bay['consecutive_non_detections'] = 0
-                logger.debug(f"Bay {bay_id}: Vehicle detected, consecutive count: {bay['consecutive_detections']}/{self.status_change_threshold}")
             else:
                 bay['consecutive_detections'] = 0
                 bay['consecutive_non_detections'] += 1
-                logger.debug(f"Bay {bay_id}: No vehicle, consecutive empty count: {bay['consecutive_non_detections']}/{self.status_change_threshold}")
             
-            # Update bay status based on detection counters
-            current_status = bay['status']
-            new_status = current_status
+            # ASYMMETRIC TRANSITIONS (Hysteresis to prevent flickering)
             
-            # Change to IN_USE if enough consecutive detections
-            if (current_status == BayStatus.AVAILABLE or 
-                current_status == BayStatus.CONNECTION_ERROR) and \
-               bay['consecutive_detections'] >= self.status_change_threshold:
+            # FAST transition: available → inUse (2 detections, ~2 seconds)
+            if (current_status == BayStatus.AVAILABLE and 
+                bay['consecutive_detections'] >= self.available_to_inuse_threshold):
                 new_status = BayStatus.IN_USE
+                logger.debug(f"Bay {bay_id}: FAST transition available→inUse ({bay['consecutive_detections']}/{self.available_to_inuse_threshold})")
             
-            # Change to AVAILABLE if enough consecutive non-detections
-            elif current_status == BayStatus.IN_USE and \
-                 bay['consecutive_non_detections'] >= self.status_change_threshold:
+            # SLOW transition: inUse → available (8 detections, ~8 seconds)  
+            elif (current_status == BayStatus.IN_USE and 
+                  bay['consecutive_non_detections'] >= self.inuse_to_available_threshold):
                 new_status = BayStatus.AVAILABLE
+                logger.debug(f"Bay {bay_id}: SLOW transition inUse→available ({bay['consecutive_non_detections']}/{self.inuse_to_available_threshold})")
             
-            # Update status if changed
+            # Log current detection state
+            if vehicle_detected:
+                logger.debug(f"Bay {bay_id}: Vehicle detected, consecutive: {bay['consecutive_detections']}/{self.available_to_inuse_threshold}")
+            else:
+                logger.debug(f"Bay {bay_id}: Empty, consecutive: {bay['consecutive_non_detections']}/{self.inuse_to_available_threshold}")
+            
+            # Apply status change
             if new_status != current_status:
                 bay['status'] = new_status
-                bay['last_updated'] = datetime.now()
-                logger.info(f"🔄 Bay {bay_id} status changed from {current_status.value} to {new_status.value}")
+                bay['last_updated'] = current_time
+                logger.info(f"🔄 Bay {bay_id} status changed: {current_status.value} → {new_status.value}")
             else:
-                logger.debug(f"Bay {bay_id}: Status remains {current_status.value} (cons_det: {bay['consecutive_detections']}, cons_empty: {bay['consecutive_non_detections']})")
+                logger.debug(f"Bay {bay_id}: Status remains {current_status.value}")
     
     def get_bay_status(self, bay_id):
         """

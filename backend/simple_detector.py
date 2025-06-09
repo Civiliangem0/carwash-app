@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import logging
 from datetime import datetime, timedelta
+from config import get_config
 
 # Configure logging
 logger = logging.getLogger('simple_detector')
@@ -12,18 +13,19 @@ class SimpleCarDetector:
     Uses background subtraction instead of complex AI - much more reliable!
     """
     
-    def __init__(self, learning_rate=0.001, min_contour_area=2000, bay_center_ratio=0.4):
+    def __init__(self):
         """
-        Initialize the simple car detector.
+        Initialize the simple car detector with configuration-based settings.
+        """
+        config = get_config()
         
-        Args:
-            learning_rate: How fast to adapt to lighting changes (0.001 = very slow)
-            min_contour_area: Minimum area for detected objects (pixels)
-            bay_center_ratio: What ratio of the frame center to check (0.4 = 40% of center)
-        """
-        self.learning_rate = learning_rate
-        self.min_contour_area = min_contour_area
-        self.bay_center_ratio = bay_center_ratio
+        self.learning_rate = config.detection.learning_rate
+        self.min_contour_area = config.detection.min_contour_area
+        self.bay_center_ratio = config.detection.bay_center_ratio
+        self.confidence_threshold = config.detection.confidence_threshold
+        self.learning_frames = config.detection.learning_frames
+        self.confidence_change_threshold = config.detection.confidence_change_threshold
+        self.empty_bay_log_interval = config.detection.empty_bay_log_interval
         
         # Background subtractor (learns empty bay background)
         self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(
@@ -36,7 +38,6 @@ class SimpleCarDetector:
         self.last_detection_time = None
         self.frame_count = 0
         self.is_learning = True
-        self.learning_frames = 100  # Learn background for first 100 frames
         
         logger.info("Simple car detector initialized")
     
@@ -99,17 +100,17 @@ class SimpleCarDetector:
         confidence = min(coverage_ratio * 2, 1.0)  # Scale to 0-1 range
         
         # Detect car if significant objects found
-        car_detected = len(significant_contours) > 0 and confidence > 0.1
+        car_detected = len(significant_contours) > 0 and confidence > self.confidence_threshold
         
         if car_detected:
             # Only log significant confidence changes to reduce spam
-            if not hasattr(self, '_last_logged_confidence') or abs(confidence - self._last_logged_confidence) > 0.2:
+            if not hasattr(self, '_last_logged_confidence') or abs(confidence - self._last_logged_confidence) > self.confidence_change_threshold:
                 logger.info(f"{bay_prefix}🚗 Car detected! Confidence: {confidence:.2f}")
                 self._last_logged_confidence = confidence
             self.last_detection_time = datetime.now()
         else:
             # Only log occasionally to avoid spam
-            if self.frame_count % 100 == 0:
+            if self.frame_count % self.empty_bay_log_interval == 0:
                 logger.debug(f"{bay_prefix}Bay empty (conf: {confidence:.2f})")
             self._last_logged_confidence = 0.0
         
