@@ -42,7 +42,7 @@ YOLO_NAMES_PATH = os.environ.get('YOLO_NAMES_PATH', 'backend/coco.names')
 CONFIDENCE_THRESHOLD = float(os.environ.get('CONFIDENCE_THRESHOLD', '0.4'))
 NMS_THRESHOLD = float(os.environ.get('NMS_THRESHOLD', '0.4'))
 STATUS_CHANGE_THRESHOLD = int(os.environ.get('STATUS_CHANGE_THRESHOLD', '3'))
-MIN_BOX_AREA = int(os.environ.get('MIN_BOX_AREA', '500'))
+MIN_BOX_AREA = int(os.environ.get('MIN_BOX_AREA', '1000'))
 MAX_BOX_AREA_RATIO = float(os.environ.get('MAX_BOX_AREA_RATIO', '0.9'))
 
 # Create Flask app

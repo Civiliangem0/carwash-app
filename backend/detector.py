@@ -19,7 +19,7 @@ class VehicleDetector:
     
     def __init__(self, config_path, weights_path, names_path, 
                  confidence_threshold=0.4, nms_threshold=0.4, 
-                 min_box_area=500, max_box_area_ratio=0.9):
+                 min_box_area=1000, max_box_area_ratio=0.9):
         """
         Initialize the vehicle detector with YOLOv4 model.
         
@@ -130,9 +130,10 @@ class VehicleDetector:
                     box_area_ratio = box_area / frame_area
                     
                     # Apply size filters to reduce false positives
+                    # Note: Cars appear as thin slices from camera angle, so relaxed height requirement
                     if (box_area >= self.min_box_area and 
                         box_area_ratio <= self.max_box_area_ratio and
-                        w > 50 and h > 50):  # Minimum width/height in pixels
+                        w > 30):  # Only require minimum width, height can be small due to camera angle
                         
                         # Rectangle coordinates
                         x = int(center_x_px - w / 2)
@@ -155,8 +156,8 @@ class VehicleDetector:
                             reasons.append(f"area too small ({box_area} < {self.min_box_area})")
                         if box_area_ratio > self.max_box_area_ratio:
                             reasons.append(f"area ratio too large ({box_area_ratio:.3f} > {self.max_box_area_ratio})")
-                        if w <= 50 or h <= 50:
-                            reasons.append(f"dimensions too small ({w}x{h})")
+                        if w <= 30:
+                            reasons.append(f"width too small ({w} <= 30)")
                         
                         logger.info(f"❌ FILTERED: confidence={confidence:.3f}, "
                                   f"size={w}x{h}, area={box_area} - {', '.join(reasons)}")
