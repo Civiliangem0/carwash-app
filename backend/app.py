@@ -39,11 +39,11 @@ YOLO_WEIGHTS_PATH = os.environ.get('YOLO_WEIGHTS_PATH', 'yolov4/yolov4-csp.weigh
 YOLO_NAMES_PATH = os.environ.get('YOLO_NAMES_PATH', 'backend/coco.names')
 
 # Detection parameters - Optimized for car-only detection
-CONFIDENCE_THRESHOLD = float(os.environ.get('CONFIDENCE_THRESHOLD', '0.5'))
+CONFIDENCE_THRESHOLD = float(os.environ.get('CONFIDENCE_THRESHOLD', '0.4'))
 NMS_THRESHOLD = float(os.environ.get('NMS_THRESHOLD', '0.4'))
 STATUS_CHANGE_THRESHOLD = int(os.environ.get('STATUS_CHANGE_THRESHOLD', '3'))
-MIN_BOX_AREA = int(os.environ.get('MIN_BOX_AREA', '2000'))
-MAX_BOX_AREA_RATIO = float(os.environ.get('MAX_BOX_AREA_RATIO', '0.8'))
+MIN_BOX_AREA = int(os.environ.get('MIN_BOX_AREA', '500'))
+MAX_BOX_AREA_RATIO = float(os.environ.get('MAX_BOX_AREA_RATIO', '0.9'))
 
 # Create Flask app
 app = Flask(__name__)
@@ -140,6 +140,7 @@ def update_bay_statuses():
     """
     Update bay statuses based on stream processor results.
     """
+    last_status_log = 0
     while True:
         try:
             for bay_id, processor in stream_processors.items():
@@ -152,6 +153,18 @@ def update_bay_statuses():
                     last_frame_time=status['last_frame_time'],
                     detection_confidence=status['detection_confidence']
                 )
+            
+            # Log bay status summary every 10 seconds
+            current_time = time.time()
+            if current_time - last_status_log >= 10:
+                status_summary = []
+                for bay_id in range(1, 5):
+                    bay_status = bay_tracker.get_bay_status(bay_id)
+                    if bay_status:
+                        status_summary.append(f"Bay {bay_id}: {bay_status['status']}")
+                
+                logger.info(f"🏪 BAY STATUS: {' | '.join(status_summary)}")
+                last_status_log = current_time
             
             # Sleep to control update rate
             time.sleep(1)

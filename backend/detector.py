@@ -18,8 +18,8 @@ class VehicleDetector:
     VEHICLE_CLASSES = [2]  # car only (removing motorbike, bus, train, truck, boat)
     
     def __init__(self, config_path, weights_path, names_path, 
-                 confidence_threshold=0.5, nms_threshold=0.4, 
-                 min_box_area=2000, max_box_area_ratio=0.8):
+                 confidence_threshold=0.4, nms_threshold=0.4, 
+                 min_box_area=500, max_box_area_ratio=0.9):
         """
         Initialize the vehicle detector with YOLOv4 model.
         
@@ -146,9 +146,20 @@ class VehicleDetector:
                         confidences.append(float(confidence))
                         class_ids.append(class_id)
                         
-                        logger.debug(f"Valid vehicle detection: {self.classes[class_id]} "
-                                   f"(conf: {confidence:.2f}, area: {box_area}, "
-                                   f"ratio: {box_area_ratio:.3f})")
+                        logger.info(f"✅ VALID CAR: confidence={confidence:.3f}, "
+                                  f"size={w}x{h}, area={box_area}")
+                    else:
+                        # Log why detection was filtered out
+                        reasons = []
+                        if box_area < self.min_box_area:
+                            reasons.append(f"area too small ({box_area} < {self.min_box_area})")
+                        if box_area_ratio > self.max_box_area_ratio:
+                            reasons.append(f"area ratio too large ({box_area_ratio:.3f} > {self.max_box_area_ratio})")
+                        if w <= 50 or h <= 50:
+                            reasons.append(f"dimensions too small ({w}x{h})")
+                        
+                        logger.info(f"❌ FILTERED: confidence={confidence:.3f}, "
+                                  f"size={w}x{h}, area={box_area} - {', '.join(reasons)}")
         
         # Apply non-maximum suppression
         indices = cv2.dnn.NMSBoxes(boxes, confidences, self.confidence_threshold, self.nms_threshold)
