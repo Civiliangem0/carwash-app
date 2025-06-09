@@ -31,13 +31,14 @@ class StatusConfig:
     # Connection and timeout settings
     connection_grace_period: int = 10          # Seconds to wait before marking disconnected bay as available
     frame_timeout: int = 30                    # Seconds before marking bay as connection error
+    customer_connection_timeout: int = 60      # Seconds before showing ConnectionLost to customers
 
 @dataclass
 class RTSPConfig:
     """Configuration for RTSP stream handling."""
     # Connection settings
     max_reconnect_attempts: int = 10
-    base_reconnect_interval: int = 5           # Base seconds between reconnection attempts
+    base_reconnect_interval: int = 2           # Base seconds between reconnection attempts (faster for car wash)
     max_reconnect_interval: int = 60           # Max seconds for exponential backoff
     
     # Stream settings
@@ -65,7 +66,7 @@ class SystemConfig:
     
     # Monitoring
     status_update_interval: int = 1            # Seconds between status updates
-    status_log_interval: int = 20              # Seconds between status summary logs
+    status_log_interval: int = 10              # Seconds between status summary logs (more frequent for car wash)
     health_check_interval: int = 60            # Seconds between health checks
     
     # API settings

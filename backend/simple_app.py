@@ -136,7 +136,7 @@ def update_bay_statuses():
                     status = processor.get_status()
                     health_monitor.update_bay_health(bay_id, status)
             
-            # Log bay status summary periodically
+            # Log bay status summary periodically (every 10 seconds)
             current_time = time.time()
             config = get_config()
             if current_time - last_status_log >= config.status_log_interval:
@@ -144,15 +144,26 @@ def update_bay_statuses():
                 for bay_id in range(1, config.bay_count + 1):
                     bay_status = bay_tracker.get_bay_status(bay_id)
                     if bay_status:
-                        if bay_status['status'] == 'inUse':
+                        # Enhanced status display with better emojis and formatting
+                        status = bay_status['status']
+                        if status == 'inUse':
                             emoji = "🚗"
-                        elif bay_status['status'] == 'connectionError':
+                            display_status = "InUse"
+                        elif status == 'connectionError':
                             emoji = "❌"
-                        else:
+                            display_status = "ConnectionLost"
+                        elif status == 'outOfService':
+                            emoji = "🔧"
+                            display_status = "OutOfService"
+                        else:  # available
                             emoji = "🅿️"
-                        status_summary.append(f"Bay {bay_id}: {emoji} {bay_status['status']}")
+                            display_status = "Available"
+                        
+                        # Add connection indicator
+                        connection_status = "🟢" if bay_status.get('isConnected', False) else "🔴"
+                        status_summary.append(f"Bay {bay_id}: {emoji} {display_status} {connection_status}")
                 
-                logger.info(f"🏪 BAY STATUS: {' | '.join(status_summary)}")
+                logger.info(f"🏪 BAY STATUS SUMMARY: {' | '.join(status_summary)}")
                 last_status_log = current_time
             
             # Sleep to control update rate

@@ -39,6 +39,7 @@ class BayTracker:
         # Connection management
         self.frame_timeout = config.status.frame_timeout
         self.connection_grace_period = config.status.connection_grace_period
+        self.customer_connection_timeout = config.status.customer_connection_timeout  # 60 seconds before showing ConnectionLost
         
         # Initialize bay statuses
         self.bays = {}
@@ -53,7 +54,8 @@ class BayTracker:
                 'is_connected': False,
                 'last_connection_time': None,      # Track when connection was established
                 'last_disconnection_time': None,   # Track when connection was lost
-                'connection_recovery_pending': False  # Flag for recovery state
+                'connection_recovery_pending': False,  # Flag for recovery state
+                'status_before_disconnection': BayStatus.AVAILABLE  # Remember status before disconnection
             }
         
         # Thread safety
@@ -94,17 +96,35 @@ class BayTracker:
                 logger.info(f"🔌 Bay {bay_id} connection RECOVERED")
                 
             elif not is_connected and was_connected:
-                # Connection lost
+                # Connection lost - remember current status
                 bay['last_disconnection_time'] = current_time
                 bay['connection_recovery_pending'] = False
-                logger.warning(f"⚠️ Bay {bay_id} connection LOST")
+                bay['status_before_disconnection'] = bay['status']  # Remember what status it had before disconnection
+                logger.warning(f"⚠️ Bay {bay_id} connection LOST (was {bay['status'].value})")
             
-            # Handle disconnected streams
+            # Handle disconnected streams with smart customer-facing status
             if not is_connected:
-                if bay['status'] != BayStatus.CONNECTION_ERROR:
-                    bay['status'] = BayStatus.CONNECTION_ERROR
-                    bay['last_updated'] = current_time
-                    logger.warning(f"Bay {bay_id} marked as CONNECTION_ERROR due to stream disconnection")
+                # Check how long we've been disconnected
+                if bay['last_disconnection_time']:
+                    disconnect_duration = (current_time - bay['last_disconnection_time']).total_seconds()
+                    
+                    if disconnect_duration >= self.customer_connection_timeout:
+                        # Been disconnected for 60+ seconds - show CONNECTION_ERROR to customers
+                        if bay['status'] != BayStatus.CONNECTION_ERROR:
+                            bay['status'] = BayStatus.CONNECTION_ERROR
+                            bay['last_updated'] = current_time
+                            logger.warning(f"Bay {bay_id} marked as CONNECTION_ERROR - disconnected for {disconnect_duration:.0f}s")
+                    else:
+                        # Still within grace period - keep previous status for customers
+                        # Internal tracking shows disconnection, but customers see previous status
+                        logger.debug(f"Bay {bay_id} disconnected for {disconnect_duration:.0f}s/{self.customer_connection_timeout}s - keeping status {bay['status_before_disconnection'].value}")
+                        # Don't change bay['status'] yet - keep showing previous status to customers
+                else:
+                    # First disconnection - start the timer but keep previous status
+                    bay['last_disconnection_time'] = current_time
+                    bay['status_before_disconnection'] = bay['status']
+                    logger.debug(f"Bay {bay_id} first disconnection - starting 60s grace period")
+                
                 return
             
             # Handle frame timeout (even when "connected")

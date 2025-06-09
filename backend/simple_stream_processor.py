@@ -264,7 +264,7 @@ class SimpleRTSPStreamProcessor:
             if not self.is_connected:
                 if not self.reconnect():
                     # If reconnection failed, wait before trying again
-                    time.sleep(self.reconnect_interval)
+                    time.sleep(self.base_reconnect_interval)
                     continue
             
             # Get frame
@@ -272,7 +272,9 @@ class SimpleRTSPStreamProcessor:
             
             if frame is None:
                 logger.warning(f"Empty frame received for Bay {self.bay_id}, attempting reconnect")
-                self.reconnect()
+                if not self.reconnect():
+                    # If reconnection failed, wait before trying again with the base interval
+                    time.sleep(self.base_reconnect_interval)
                 continue
             
             # Detect cars using simple background subtraction
