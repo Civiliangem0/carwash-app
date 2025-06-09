@@ -186,6 +186,13 @@ class RTSPStreamProcessor:
                     if detected and detections:
                         # Use highest confidence detection
                         self.detection_confidence = max(d['confidence'] for d in detections)
+                        # Log detection details for debugging
+                        detection_info = []
+                        for d in detections:
+                            detection_info.append(f"{d['class_name']}({d['confidence']:.2f})")
+                        logger.info(f"Bay {self.bay_id}: Vehicle detected - {', '.join(detection_info)}")
+                    else:
+                        self.detection_confidence = 0.0
                     
                     logger.debug(f"Bay {self.bay_id}: Vehicle detected: {detected}, " 
                                 f"Confidence: {self.detection_confidence:.2f}")

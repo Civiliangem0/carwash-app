@@ -23,7 +23,7 @@ class BayTracker:
     """
     Class for tracking the status of car wash bays.
     """
-    def __init__(self, bay_count=4, status_change_threshold=3, error_timeout=30):
+    def __init__(self, bay_count=4, status_change_threshold=5, error_timeout=30):
         """
         Initialize the bay tracker.
         

@@ -18,7 +18,8 @@ class VehicleDetector:
     VEHICLE_CLASSES = [2, 3, 5, 6, 7, 8]  # car, motorbike, bus, train, truck, boat
     
     def __init__(self, config_path, weights_path, names_path, 
-                 confidence_threshold=0.5, nms_threshold=0.4):
+                 confidence_threshold=0.7, nms_threshold=0.4, 
+                 min_box_area=5000, max_box_area_ratio=0.8):
         """
         Initialize the vehicle detector with YOLOv4 model.
         
@@ -26,11 +27,15 @@ class VehicleDetector:
             config_path: Path to YOLOv4 config file
             weights_path: Path to YOLOv4 weights file
             names_path: Path to COCO names file
-            confidence_threshold: Minimum confidence for detection
+            confidence_threshold: Minimum confidence for detection (increased to 0.7)
             nms_threshold: Non-maximum suppression threshold
+            min_box_area: Minimum bounding box area (pixels) to consider as vehicle
+            max_box_area_ratio: Maximum ratio of box area to frame area
         """
         self.confidence_threshold = confidence_threshold
         self.nms_threshold = nms_threshold
+        self.min_box_area = min_box_area
+        self.max_box_area_ratio = max_box_area_ratio
         
         # Check if model files exist
         if not os.path.exists(config_path):
@@ -88,6 +93,8 @@ class VehicleDetector:
         confidences = []
         boxes = []
         
+        frame_area = height * width
+        
         for output in outputs:
             for detection in output:
                 scores = detection[5:]
@@ -102,13 +109,30 @@ class VehicleDetector:
                     w = int(detection[2] * width)
                     h = int(detection[3] * height)
                     
-                    # Rectangle coordinates
-                    x = int(center_x - w / 2)
-                    y = int(center_y - h / 2)
+                    # Calculate bounding box area
+                    box_area = w * h
+                    box_area_ratio = box_area / frame_area
                     
-                    boxes.append([x, y, w, h])
-                    confidences.append(float(confidence))
-                    class_ids.append(class_id)
+                    # Apply size filters to reduce false positives
+                    if (box_area >= self.min_box_area and 
+                        box_area_ratio <= self.max_box_area_ratio and
+                        w > 50 and h > 50):  # Minimum width/height in pixels
+                        
+                        # Rectangle coordinates
+                        x = int(center_x - w / 2)
+                        y = int(center_y - h / 2)
+                        
+                        # Ensure bounding box is within frame boundaries
+                        x = max(0, min(x, width - w))
+                        y = max(0, min(y, height - h))
+                        
+                        boxes.append([x, y, w, h])
+                        confidences.append(float(confidence))
+                        class_ids.append(class_id)
+                        
+                        logger.debug(f"Valid vehicle detection: {self.classes[class_id]} "
+                                   f"(conf: {confidence:.2f}, area: {box_area}, "
+                                   f"ratio: {box_area_ratio:.3f})")
         
         # Apply non-maximum suppression
         indices = cv2.dnn.NMSBoxes(boxes, confidences, self.confidence_threshold, self.nms_threshold)
