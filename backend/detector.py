@@ -97,17 +97,31 @@ class VehicleDetector:
         
         for output in outputs:
             for detection in output:
+                # YOLO format: [center_x, center_y, width, height, objectness, class1_prob, class2_prob, ...]
+                center_x = detection[0]
+                center_y = detection[1]
+                width_norm = detection[2]
+                height_norm = detection[3]
+                objectness = detection[4]
                 scores = detection[5:]
+                
                 class_id = np.argmax(scores)
-                confidence = scores[class_id]
+                class_prob = scores[class_id]
+                
+                # Final confidence is objectness * class_probability
+                confidence = objectness * class_prob
+                
+                # Debug: Log confidence calculation
+                logger.debug(f"Objectness: {objectness:.3f}, Class prob: {class_prob:.3f}, "
+                           f"Final: {confidence:.3f} for {self.classes[class_id]}")
                 
                 # Filter for vehicle classes and confidence threshold
                 if class_id in self.VEHICLE_CLASSES and confidence > self.confidence_threshold:
-                    # YOLO returns center (x, y) and width/height
-                    center_x = int(detection[0] * width)
-                    center_y = int(detection[1] * height)
-                    w = int(detection[2] * width)
-                    h = int(detection[3] * height)
+                    # Convert normalized coordinates to pixel coordinates
+                    center_x_px = int(center_x * width)
+                    center_y_px = int(center_y * height)
+                    w = int(width_norm * width)
+                    h = int(height_norm * height)
                     
                     # Calculate bounding box area
                     box_area = w * h
@@ -119,8 +133,8 @@ class VehicleDetector:
                         w > 50 and h > 50):  # Minimum width/height in pixels
                         
                         # Rectangle coordinates
-                        x = int(center_x - w / 2)
-                        y = int(center_y - h / 2)
+                        x = int(center_x_px - w / 2)
+                        y = int(center_y_px - h / 2)
                         
                         # Ensure bounding box is within frame boundaries
                         x = max(0, min(x, width - w))

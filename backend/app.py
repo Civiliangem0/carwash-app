@@ -38,10 +38,12 @@ YOLO_CONFIG_PATH = os.environ.get('YOLO_CONFIG_PATH', 'yolov4/yolov4-csp.cfg')
 YOLO_WEIGHTS_PATH = os.environ.get('YOLO_WEIGHTS_PATH', 'yolov4/yolov4-csp.weights')
 YOLO_NAMES_PATH = os.environ.get('YOLO_NAMES_PATH', 'backend/coco.names')
 
-# Detection parameters
-CONFIDENCE_THRESHOLD = float(os.environ.get('CONFIDENCE_THRESHOLD', '0.5'))
+# Detection parameters - Updated for better accuracy
+CONFIDENCE_THRESHOLD = float(os.environ.get('CONFIDENCE_THRESHOLD', '0.7'))
 NMS_THRESHOLD = float(os.environ.get('NMS_THRESHOLD', '0.4'))
-STATUS_CHANGE_THRESHOLD = int(os.environ.get('STATUS_CHANGE_THRESHOLD', '3'))
+STATUS_CHANGE_THRESHOLD = int(os.environ.get('STATUS_CHANGE_THRESHOLD', '5'))
+MIN_BOX_AREA = int(os.environ.get('MIN_BOX_AREA', '5000'))
+MAX_BOX_AREA_RATIO = float(os.environ.get('MAX_BOX_AREA_RATIO', '0.8'))
 
 # Create Flask app
 app = Flask(__name__)
@@ -58,7 +60,6 @@ jwt = init_jwt(app)
 register_auth_routes(app)
 
 # Global objects
-detector = None
 bay_tracker = None
 stream_processors = {}
 start_time = datetime.now()
@@ -67,19 +68,9 @@ def initialize_system():
     """
     Initialize the vehicle detection system.
     """
-    global detector, bay_tracker, stream_processors
+    global bay_tracker, stream_processors
     
     try:
-        # Initialize vehicle detector
-        logger.info("Initializing vehicle detector...")
-        detector = VehicleDetector(
-            YOLO_CONFIG_PATH,
-            YOLO_WEIGHTS_PATH,
-            YOLO_NAMES_PATH,
-            CONFIDENCE_THRESHOLD,
-            NMS_THRESHOLD
-        )
-        
         # Initialize bay tracker
         logger.info("Initializing bay tracker...")
         bay_tracker = BayTracker(
@@ -87,9 +78,21 @@ def initialize_system():
             status_change_threshold=STATUS_CHANGE_THRESHOLD
         )
         
-        # Initialize stream processors
+        # Initialize stream processors with separate detector instances
         logger.info("Initializing stream processors...")
         for bay_id, rtsp_url in RTSP_URLS.items():
+            # Create separate detector instance for each bay to avoid shared state
+            logger.info(f"Creating detector instance for Bay {bay_id}...")
+            detector = VehicleDetector(
+                YOLO_CONFIG_PATH,
+                YOLO_WEIGHTS_PATH,
+                YOLO_NAMES_PATH,
+                confidence_threshold=CONFIDENCE_THRESHOLD,
+                nms_threshold=NMS_THRESHOLD,
+                min_box_area=MIN_BOX_AREA,
+                max_box_area_ratio=MAX_BOX_AREA_RATIO
+            )
+            
             stream_processors[bay_id] = RTSPStreamProcessor(
                 bay_id=bay_id,
                 rtsp_url=rtsp_url,
