@@ -154,9 +154,9 @@ def update_bay_statuses():
                     detection_confidence=status['detection_confidence']
                 )
             
-            # Log bay status summary every 10 seconds
+            # Log bay status summary every 15 seconds
             current_time = time.time()
-            if current_time - last_status_log >= 10:
+            if current_time - last_status_log >= 15:
                 status_summary = []
                 for bay_id in range(1, 5):
                     bay_status = bay_tracker.get_bay_status(bay_id)

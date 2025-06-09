@@ -63,12 +63,13 @@ class VehicleDetector:
         
         logger.info("YOLOv4 model loaded successfully")
         
-    def detect_vehicles(self, frame):
+    def detect_vehicles(self, frame, bay_id=None):
         """
         Detect vehicles in a frame.
         
         Args:
             frame: Image frame from video stream
+            bay_id: Optional bay ID for logging purposes
             
         Returns:
             detected: Boolean indicating if any vehicle was detected
@@ -111,11 +112,10 @@ class VehicleDetector:
                 # Final confidence is objectness * class_probability
                 confidence = objectness * class_prob
                 
-                # Debug: Log car detections only  
-                if class_id in self.VEHICLE_CLASSES and confidence > 0.3:
-                    logger.info(f"Car candidate: {self.classes[class_id]} - "
-                              f"Objectness: {objectness:.3f}, Class prob: {class_prob:.3f}, "
-                              f"Final confidence: {confidence:.3f}")
+                # Debug: Log only high-confidence car detections to reduce spam
+                if class_id in self.VEHICLE_CLASSES and confidence > 0.5:
+                    bay_prefix = f"Bay {bay_id}: " if bay_id else ""
+                    logger.debug(f"{bay_prefix}Car candidate - confidence: {confidence:.3f}")
                 
                 # Filter for vehicle classes and confidence threshold
                 if class_id in self.VEHICLE_CLASSES and confidence > self.confidence_threshold:
@@ -147,20 +147,21 @@ class VehicleDetector:
                         confidences.append(float(confidence))
                         class_ids.append(class_id)
                         
-                        logger.info(f"✅ VALID CAR: confidence={confidence:.3f}, "
-                                  f"size={w}x{h}, area={box_area}")
+                        bay_prefix = f"Bay {bay_id}: " if bay_id else ""
+                        logger.info(f"{bay_prefix}✅ VALID CAR: confidence={confidence:.3f}")
                     else:
-                        # Log why detection was filtered out
-                        reasons = []
-                        if box_area < self.min_box_area:
-                            reasons.append(f"area too small ({box_area} < {self.min_box_area})")
-                        if box_area_ratio > self.max_box_area_ratio:
-                            reasons.append(f"area ratio too large ({box_area_ratio:.3f} > {self.max_box_area_ratio})")
-                        if w <= 30:
-                            reasons.append(f"width too small ({w} <= 30)")
-                        
-                        logger.info(f"❌ FILTERED: confidence={confidence:.3f}, "
-                                  f"size={w}x{h}, area={box_area} - {', '.join(reasons)}")
+                        # Only log filtered detections if they have high confidence (reduce spam)
+                        if confidence > 0.5:
+                            reasons = []
+                            if box_area < self.min_box_area:
+                                reasons.append(f"area too small ({box_area} < {self.min_box_area})")
+                            if box_area_ratio > self.max_box_area_ratio:
+                                reasons.append(f"area ratio too large ({box_area_ratio:.3f} > {self.max_box_area_ratio})")
+                            if w <= 30:
+                                reasons.append(f"width too small ({w} <= 30)")
+                            
+                            bay_prefix = f"Bay {bay_id}: " if bay_id else ""
+                            logger.debug(f"{bay_prefix}❌ FILTERED: {', '.join(reasons)}")
         
         # Apply non-maximum suppression
         indices = cv2.dnn.NMSBoxes(boxes, confidences, self.confidence_threshold, self.nms_threshold)
@@ -180,11 +181,14 @@ class VehicleDetector:
                 'box': box
             })
         
-        # Log detection summary
+        # Log detection summary (only for positive detections to reduce spam)
         if len(detections) > 0:
-            logger.info(f"Detected {len(detections)} vehicles after filtering")
+            bay_prefix = f"Bay {bay_id}: " if bay_id else ""
+            logger.info(f"{bay_prefix}🚗 Detected {len(detections)} cars")
         else:
-            logger.info("No vehicles detected after filtering")
+            # Only log "no vehicles" occasionally to reduce spam
+            bay_prefix = f"Bay {bay_id}: " if bay_id else ""
+            logger.debug(f"{bay_prefix}No cars detected")
         
         # Return whether any vehicle was detected and the detections
         return len(detections) > 0, detections
