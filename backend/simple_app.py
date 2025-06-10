@@ -117,12 +117,16 @@ def update_bay_statuses():
     loop_count = 0
     while True:
         try:
+            logger.info("🔄 Starting bay status update loop iteration...")
+            
             for bay_id, processor in stream_processors.items():
+                logger.info(f"🔄 Processing bay {bay_id}...")
                 status = processor.get_status()
+                logger.info(f"🔄 Got status for bay {bay_id}")
                 
                 # Debug logging to understand status updates
                 if status['vehicle_detected']:
-                    logger.debug(f"Updating Bay {bay_id}: vehicle_detected=True, connected={status['is_connected']}, conf={status['detection_confidence']:.2f}")
+                    logger.info(f"Updating Bay {bay_id}: vehicle_detected=True, connected={status['is_connected']}, conf={status['detection_confidence']:.2f}")
                 
                 bay_tracker.update_bay_status(
                     bay_id=bay_id,
@@ -131,14 +135,18 @@ def update_bay_statuses():
                     last_frame_time=status['last_frame_time'],
                     detection_confidence=status['detection_confidence']
                 )
+                logger.info(f"🔄 Updated status for bay {bay_id}")
             
             # Update health monitor
+            logger.info("🔄 Updating health monitor...")
             if health_monitor:
                 for bay_id, processor in stream_processors.items():
                     status = processor.get_status()
                     health_monitor.update_bay_health(bay_id, status)
+            logger.info("🔄 Health monitor updated")
             
             # Log bay status summary periodically (every 10 seconds)
+            logger.info("🔄 Checking if time for status summary...")
             current_time = time.time()
             config = get_config()
             if current_time - last_status_log >= config.status_log_interval:
