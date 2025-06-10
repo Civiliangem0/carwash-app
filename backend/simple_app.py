@@ -68,13 +68,24 @@ def initialize_system():
         
         # Initialize stream processors with configuration
         logger.info("Initializing advanced stream processors...")
+        background_status = []
         for bay_id, rtsp_url in config.rtsp_urls.items():
             logger.info(f"Creating advanced detector for Bay {bay_id}...")
             
-            stream_processors[bay_id] = SimpleRTSPStreamProcessor(
+            processor = SimpleRTSPStreamProcessor(
                 bay_id=bay_id,
                 rtsp_url=rtsp_url
             )
+            stream_processors[bay_id] = processor
+            
+            # Check if background was loaded
+            if processor.detector.background_loaded:
+                background_status.append(f"Bay {bay_id}: ⚡ Instant")
+            else:
+                background_status.append(f"Bay {bay_id}: 🔄 Learning")
+        
+        # Log background loading summary
+        logger.info(f"🎯 Background Status: {' | '.join(background_status)}")
         
         # Initialize admin dashboard
         logger.info("Initializing admin dashboard...")
@@ -112,22 +123,16 @@ def stop_stream_processors():
 
 def update_bay_statuses():
     """Update bay statuses based on simple stream processor results."""
-    logger.info("🔄 Bay status update thread is RUNNING!")
     last_status_log = 0
-    loop_count = 0
     while True:
         try:
-            logger.info("🔄 Starting bay status update loop iteration...")
-            
+            # Collect statuses once to avoid duplicate calls and potential deadlock
+            statuses = {}
             for bay_id, processor in stream_processors.items():
-                logger.info(f"🔄 Processing bay {bay_id}...")
                 status = processor.get_status()
-                logger.info(f"🔄 Got status for bay {bay_id}")
+                statuses[bay_id] = status
                 
-                # Debug logging to understand status updates
-                if status['vehicle_detected']:
-                    logger.info(f"Updating Bay {bay_id}: vehicle_detected=True, connected={status['is_connected']}, conf={status['detection_confidence']:.2f}")
-                
+                # Update bay tracker
                 bay_tracker.update_bay_status(
                     bay_id=bay_id,
                     vehicle_detected=status['vehicle_detected'],
@@ -135,18 +140,13 @@ def update_bay_statuses():
                     last_frame_time=status['last_frame_time'],
                     detection_confidence=status['detection_confidence']
                 )
-                logger.info(f"🔄 Updated status for bay {bay_id}")
             
-            # Update health monitor
-            logger.info("🔄 Updating health monitor...")
+            # Update health monitor using cached statuses
             if health_monitor:
-                for bay_id, processor in stream_processors.items():
-                    status = processor.get_status()
+                for bay_id, status in statuses.items():
                     health_monitor.update_bay_health(bay_id, status)
-            logger.info("🔄 Health monitor updated")
             
             # Log bay status summary periodically (every 10 seconds)
-            logger.info("🔄 Checking if time for status summary...")
             current_time = time.time()
             config = get_config()
             if current_time - last_status_log >= config.status_log_interval:
@@ -183,9 +183,6 @@ def update_bay_statuses():
                 last_status_log = current_time
             
             # Sleep to control update rate
-            loop_count += 1
-            if loop_count % 30 == 0:  # Log every 30 seconds to confirm thread is alive
-                logger.info(f"🔄 Bay status thread alive - loop #{loop_count}")
             time.sleep(1)
             
         except Exception as e:

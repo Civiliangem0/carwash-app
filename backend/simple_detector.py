@@ -13,12 +13,16 @@ class SimpleCarDetector:
     Uses background subtraction instead of complex AI - much more reliable!
     """
     
-    def __init__(self):
+    def __init__(self, bay_id=None):
         """
         Initialize the simple car detector with configuration-based settings.
+        
+        Args:
+            bay_id: Bay identifier for loading pre-captured backgrounds
         """
         config = get_config()
         
+        self.bay_id = bay_id
         self.learning_rate = config.detection.learning_rate
         self.min_contour_area = config.detection.min_contour_area
         self.bay_center_ratio = config.detection.bay_center_ratio
@@ -38,8 +42,55 @@ class SimpleCarDetector:
         self.last_detection_time = None
         self.frame_count = 0
         self.is_learning = True
+        self.background_loaded = False
+        
+        # Try to load pre-captured background
+        if bay_id is not None:
+            self.background_loaded = self.load_background(bay_id)
         
         logger.info("Simple car detector initialized")
+    
+    def load_background(self, bay_id):
+        """
+        Load pre-captured background image for instant detection.
+        
+        Args:
+            bay_id: Bay identifier
+            
+        Returns:
+            bool: True if background loaded successfully, False otherwise
+        """
+        import os
+        
+        try:
+            # Path to pre-captured background image
+            background_path = f"backgrounds/bay_{bay_id}_background.jpg"
+            
+            if not os.path.exists(background_path):
+                logger.info(f"Bay {bay_id}: No pre-captured background found at {background_path}")
+                return False
+            
+            # Load the background image
+            background_image = cv2.imread(background_path)
+            if background_image is None:
+                logger.warning(f"Bay {bay_id}: Failed to load background image from {background_path}")
+                return False
+            
+            # Train the background subtractor with the pre-captured background
+            # Apply the background multiple times to establish it as the base model
+            for _ in range(50):  # Apply multiple times to establish background
+                self.bg_subtractor.apply(background_image, learningRate=0.9)
+            
+            # Set state to indicate background is ready
+            self.is_learning = False
+            self.frame_count = self.learning_frames  # Skip learning phase
+            
+            logger.info(f"✅ Bay {bay_id}: Loaded pre-captured background - ready for instant detection!")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Bay {bay_id}: Error loading background: {str(e)}")
+            return False
     
     def detect_car(self, frame, bay_id=None):
         """
@@ -59,13 +110,18 @@ class SimpleCarDetector:
         bay_prefix = f"Bay {bay_id}: " if bay_id else ""
         
         # Apply background subtraction
-        fg_mask = self.bg_subtractor.apply(frame, learningRate=self.learning_rate)
-        
-        # Still learning background - no detections yet
-        if self.frame_count < self.learning_frames:
-            if self.frame_count % 20 == 0:  # Log progress every 20 frames
-                logger.info(f"{bay_prefix}Learning background... {self.frame_count}/{self.learning_frames}")
-            return False, 0.0
+        if self.background_loaded:
+            # Use pre-loaded background - no learning needed
+            fg_mask = self.bg_subtractor.apply(frame, learningRate=0.0)  # No learning
+        else:
+            # Learning mode - continue learning background
+            fg_mask = self.bg_subtractor.apply(frame, learningRate=self.learning_rate)
+            
+            # Still learning background - no detections yet
+            if self.frame_count < self.learning_frames:
+                if self.frame_count % 20 == 0:  # Log progress every 20 frames
+                    logger.info(f"{bay_prefix}Learning background... {self.frame_count}/{self.learning_frames}")
+                return False, 0.0
         
         # Define region of interest (center area where cars park)
         height, width = fg_mask.shape

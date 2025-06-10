@@ -31,8 +31,8 @@ class SimpleRTSPStreamProcessor:
         self.target_fps = config.rtsp.target_fps
         self.buffer_size = config.rtsp.buffer_size
         
-        # Create simple detector for this bay
-        self.detector = SimpleCarDetector()
+        # Create simple detector for this bay with bay_id for background loading
+        self.detector = SimpleCarDetector(bay_id=bay_id)
         
         # Stream state
         self.cap = None

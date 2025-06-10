@@ -63,6 +63,7 @@ class SystemConfig:
     # Bay configuration
     bay_count: int = 4
     rtsp_urls: Dict[int, str] = None
+    backgrounds_folder: str = "backgrounds"    # Folder for pre-captured background images
     
     # Monitoring
     status_update_interval: int = 1            # Seconds between status updates
