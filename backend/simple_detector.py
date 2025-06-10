@@ -63,33 +63,62 @@ class SimpleCarDetector:
         import os
         
         try:
-            # Path to pre-captured background image
-            background_path = f"backgrounds/bay_{bay_id}_background.jpg"
+            # Try multiple possible locations for background images
+            possible_paths = [
+                f"backgrounds/bay_{bay_id}_background.jpg",  # From current working dir
+                f"../backgrounds/bay_{bay_id}_background.jpg",  # From parent dir
+                os.path.join(os.path.dirname(__file__), '..', 'backgrounds', f'bay_{bay_id}_background.jpg'),  # Relative to this file's parent
+                os.path.join(os.path.dirname(__file__), 'backgrounds', f'bay_{bay_id}_background.jpg'),  # Same dir as this file
+                os.path.join(os.getcwd(), 'backgrounds', f'bay_{bay_id}_background.jpg'),  # From current working directory
+                os.path.join(os.getcwd(), '..', 'backgrounds', f'bay_{bay_id}_background.jpg')  # From parent of current working directory
+            ]
             
-            if not os.path.exists(background_path):
-                logger.info(f"Bay {bay_id}: No pre-captured background found at {background_path}")
+            logger.info(f"Bay {bay_id}: Searching for background image...")
+            
+            background_path = None
+            for path in possible_paths:
+                abs_path = os.path.abspath(path)
+                logger.info(f"Bay {bay_id}: Checking {abs_path}")
+                
+                if os.path.exists(abs_path):
+                    background_path = abs_path
+                    logger.info(f"Bay {bay_id}: ✅ Found background at {abs_path}")
+                    break
+                else:
+                    logger.debug(f"Bay {bay_id}: ❌ Not found at {abs_path}")
+            
+            if background_path is None:
+                logger.warning(f"Bay {bay_id}: ❌ No background image found in any of the expected locations")
                 return False
             
             # Load the background image
+            logger.info(f"Bay {bay_id}: Loading background image from {background_path}")
             background_image = cv2.imread(background_path)
             if background_image is None:
-                logger.warning(f"Bay {bay_id}: Failed to load background image from {background_path}")
+                logger.error(f"Bay {bay_id}: ❌ Failed to load background image from {background_path} (CV2 error)")
                 return False
+            
+            # Log image details
+            height, width = background_image.shape[:2]
+            logger.info(f"Bay {bay_id}: Background image loaded - size: {width}x{height}")
             
             # Train the background subtractor with the pre-captured background
             # Apply the background multiple times to establish it as the base model
-            for _ in range(50):  # Apply multiple times to establish background
+            logger.info(f"Bay {bay_id}: Training background subtractor...")
+            for i in range(50):  # Apply multiple times to establish background
                 self.bg_subtractor.apply(background_image, learningRate=0.9)
             
             # Set state to indicate background is ready
             self.is_learning = False
             self.frame_count = self.learning_frames  # Skip learning phase
             
-            logger.info(f"✅ Bay {bay_id}: Loaded pre-captured background - ready for instant detection!")
+            logger.info(f"✅ Bay {bay_id}: Background loaded successfully - ready for INSTANT detection!")
             return True
             
         except Exception as e:
-            logger.error(f"Bay {bay_id}: Error loading background: {str(e)}")
+            logger.error(f"Bay {bay_id}: ❌ Error loading background: {str(e)}")
+            import traceback
+            logger.error(f"Bay {bay_id}: Traceback: {traceback.format_exc()}")
             return False
     
     def detect_car(self, frame, bay_id=None):

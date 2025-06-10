@@ -123,9 +123,18 @@ def stop_stream_processors():
 
 def update_bay_statuses():
     """Update bay statuses based on simple stream processor results."""
+    logger.info("🔄 Bay status update thread starting...")
     last_status_log = 0
+    loop_count = 0
+    
     while True:
         try:
+            loop_count += 1
+            
+            # Log first loop to confirm thread is working
+            if loop_count == 1:
+                logger.info("🔄 Bay status thread: First loop iteration starting...")
+            
             # Collect statuses once to avoid duplicate calls and potential deadlock
             statuses = {}
             for bay_id, processor in stream_processors.items():
@@ -149,7 +158,14 @@ def update_bay_statuses():
             # Log bay status summary periodically (every 10 seconds)
             current_time = time.time()
             config = get_config()
+            
+            # Debug timing logic
+            time_since_last_log = current_time - last_status_log
+            if loop_count <= 5 or loop_count % 30 == 0:  # Log first 5 loops and every 30 seconds
+                logger.info(f"🔄 Loop #{loop_count}: Time since last status log: {time_since_last_log:.1f}s (need {config.status_log_interval}s)")
+            
             if current_time - last_status_log >= config.status_log_interval:
+                logger.info(f"🔄 Generating bay status summary (loop #{loop_count})...")
                 status_summary = []
                 for bay_id in range(1, config.bay_count + 1):
                     bay_status = bay_tracker.get_bay_status(bay_id)
