@@ -126,6 +126,7 @@ def update_bay_statuses():
     logger.info("🔄 Bay status update thread starting...")
     last_status_log = 0
     loop_count = 0
+    last_health_log = time.time()
     
     while True:
         try:
@@ -135,28 +136,74 @@ def update_bay_statuses():
             if loop_count == 1:
                 logger.info("🔄 Bay status thread: First loop iteration starting...")
             
-            # Collect statuses once to avoid duplicate calls and potential deadlock
+            # Thread health check - log every 30 seconds to confirm thread is alive
+            current_time = time.time()
+            if current_time - last_health_log >= 30:
+                logger.info(f"💓 Bay status thread health check - Loop #{loop_count}, running for {current_time - last_health_log:.0f}s")
+                last_health_log = current_time
+            
+            # Collect statuses with timeout protection and detailed logging
+            logger.debug(f"🔄 Loop #{loop_count}: Starting status collection from {len(stream_processors)} processors")
             statuses = {}
+            
             for bay_id, processor in stream_processors.items():
-                status = processor.get_status()
-                statuses[bay_id] = status
-                
-                # Update bay tracker
-                bay_tracker.update_bay_status(
-                    bay_id=bay_id,
-                    vehicle_detected=status['vehicle_detected'],
-                    is_connected=status['is_connected'],
-                    last_frame_time=status['last_frame_time'],
-                    detection_confidence=status['detection_confidence']
-                )
+                try:
+                    logger.debug(f"🔄 Loop #{loop_count}: Getting status from Bay {bay_id} processor")
+                    
+                    # Use a timeout mechanism to prevent hanging
+                    import signal
+                    
+                    def timeout_handler(signum, frame):
+                        raise TimeoutError(f"Timeout getting status from Bay {bay_id}")
+                    
+                    # Set timeout (only on Unix systems)
+                    if hasattr(signal, 'SIGALRM'):
+                        signal.signal(signal.SIGALRM, timeout_handler)
+                        signal.alarm(5)  # 5 second timeout
+                    
+                    try:
+                        status = processor.get_status()
+                        logger.debug(f"🔄 Loop #{loop_count}: Bay {bay_id} status retrieved successfully")
+                    finally:
+                        # Clear the alarm
+                        if hasattr(signal, 'SIGALRM'):
+                            signal.alarm(0)
+                    
+                    statuses[bay_id] = status
+                    
+                    # Update bay tracker
+                    logger.debug(f"🔄 Loop #{loop_count}: Updating bay tracker for Bay {bay_id}")
+                    bay_tracker.update_bay_status(
+                        bay_id=bay_id,
+                        vehicle_detected=status['vehicle_detected'],
+                        is_connected=status['is_connected'],
+                        last_frame_time=status['last_frame_time'],
+                        detection_confidence=status['detection_confidence']
+                    )
+                    logger.debug(f"🔄 Loop #{loop_count}: Bay {bay_id} tracker updated")
+                    
+                except Exception as e:
+                    logger.error(f"🔄 Loop #{loop_count}: ERROR getting status from Bay {bay_id}: {str(e)}")
+                    # Create a fallback status
+                    statuses[bay_id] = {
+                        'bay_id': bay_id,
+                        'is_connected': False,
+                        'vehicle_detected': False,
+                        'last_frame_time': None,
+                        'detection_confidence': 0.0
+                    }
             
             # Update health monitor using cached statuses
+            logger.debug(f"🔄 Loop #{loop_count}: Updating health monitor with {len(statuses)} statuses")
             if health_monitor:
-                for bay_id, status in statuses.items():
-                    health_monitor.update_bay_health(bay_id, status)
+                try:
+                    for bay_id, status in statuses.items():
+                        health_monitor.update_bay_health(bay_id, status)
+                    logger.debug(f"🔄 Loop #{loop_count}: Health monitor updated successfully")
+                except Exception as e:
+                    logger.error(f"🔄 Loop #{loop_count}: ERROR updating health monitor: {str(e)}")
             
             # Log bay status summary periodically (every 10 seconds)
-            current_time = time.time()
             config = get_config()
             
             # Debug timing logic
@@ -164,12 +211,21 @@ def update_bay_statuses():
             if loop_count <= 5 or loop_count % 30 == 0:  # Log first 5 loops and every 30 seconds
                 logger.info(f"🔄 Loop #{loop_count}: Time since last status log: {time_since_last_log:.1f}s (need {config.status_log_interval}s)")
             
+            logger.debug(f"🔄 Loop #{loop_count}: Checking if time for status summary: {time_since_last_log:.1f}s >= {config.status_log_interval}s")
+            
             if current_time - last_status_log >= config.status_log_interval:
                 logger.info(f"🔄 Generating bay status summary (loop #{loop_count})...")
                 status_summary = []
+                
+                logger.debug(f"🔄 Loop #{loop_count}: Getting bay statuses from tracker for {config.bay_count} bays")
+                
                 for bay_id in range(1, config.bay_count + 1):
-                    bay_status = bay_tracker.get_bay_status(bay_id)
-                    if bay_status:
+                    try:
+                        logger.debug(f"🔄 Loop #{loop_count}: Getting Bay {bay_id} status from tracker")
+                        bay_status = bay_tracker.get_bay_status(bay_id)
+                        logger.debug(f"🔄 Loop #{loop_count}: Bay {bay_id} status from tracker: {bay_status}")
+                        
+                        if bay_status:
                         # Enhanced status display with better emojis and formatting
                         status = bay_status['status']
                         if status == 'inUse':
@@ -190,21 +246,32 @@ def update_bay_statuses():
                         status_summary.append(f"Bay {bay_id}: {emoji} {display_status} {connection_status}")
                     else:
                         # Bay status is None - add debug info
+                        logger.warning(f"🔄 Loop #{loop_count}: Bay {bay_id} returned None status from tracker")
                         status_summary.append(f"Bay {bay_id}: ❓ NoStatus")
+                        
+                    except Exception as e:
+                        logger.error(f"🔄 Loop #{loop_count}: ERROR getting Bay {bay_id} status: {str(e)}")
+                        status_summary.append(f"Bay {bay_id}: ❌ Error")
+                
+                logger.debug(f"🔄 Loop #{loop_count}: Generated status summary with {len(status_summary)} entries")
                 
                 if status_summary:
                     logger.info(f"🏪 BAY STATUS SUMMARY: {' | '.join(status_summary)}")
                 else:
                     logger.warning("🏪 BAY STATUS SUMMARY: No bay statuses available")
+                
                 last_status_log = current_time
+                logger.debug(f"🔄 Loop #{loop_count}: Status summary completed, next summary in {config.status_log_interval}s")
             
             # Sleep to control update rate
+            logger.debug(f"🔄 Loop #{loop_count}: Sleeping for 1 second")
             time.sleep(1)
             
         except Exception as e:
-            logger.error(f"💥 CRITICAL ERROR in bay status update thread: {str(e)}")
+            logger.error(f"💥 CRITICAL ERROR in bay status update thread (loop #{loop_count}): {str(e)}")
             import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            logger.error(f"Thread will continue after 5 second delay...")
             time.sleep(5)  # Wait longer on error
 
 # API routes (same as before)
