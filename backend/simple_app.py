@@ -226,28 +226,28 @@ def update_bay_statuses():
                         logger.debug(f"🔄 Loop #{loop_count}: Bay {bay_id} status from tracker: {bay_status}")
                         
                         if bay_status:
-                        # Enhanced status display with better emojis and formatting
-                        status = bay_status['status']
-                        if status == 'inUse':
-                            emoji = "🚗"
-                            display_status = "InUse"
-                        elif status == 'connectionError':
-                            emoji = "❌"
-                            display_status = "ConnectionLost"
-                        elif status == 'outOfService':
-                            emoji = "🔧"
-                            display_status = "OutOfService"
-                        else:  # available
-                            emoji = "🅿️"
-                            display_status = "Available"
-                        
-                        # Add connection indicator
-                        connection_status = "🟢" if bay_status.get('isConnected', False) else "🔴"
-                        status_summary.append(f"Bay {bay_id}: {emoji} {display_status} {connection_status}")
-                    else:
-                        # Bay status is None - add debug info
-                        logger.warning(f"🔄 Loop #{loop_count}: Bay {bay_id} returned None status from tracker")
-                        status_summary.append(f"Bay {bay_id}: ❓ NoStatus")
+                            # Enhanced status display with better emojis and formatting
+                            status = bay_status['status']
+                            if status == 'inUse':
+                                emoji = "🚗"
+                                display_status = "InUse"
+                            elif status == 'connectionError':
+                                emoji = "❌"
+                                display_status = "ConnectionLost"
+                            elif status == 'outOfService':
+                                emoji = "🔧"
+                                display_status = "OutOfService"
+                            else:  # available
+                                emoji = "🅿️"
+                                display_status = "Available"
+                            
+                            # Add connection indicator
+                            connection_status = "🟢" if bay_status.get('isConnected', False) else "🔴"
+                            status_summary.append(f"Bay {bay_id}: {emoji} {display_status} {connection_status}")
+                        else:
+                            # Bay status is None - add debug info
+                            logger.warning(f"🔄 Loop #{loop_count}: Bay {bay_id} returned None status from tracker")
+                            status_summary.append(f"Bay {bay_id}: ❓ NoStatus")
                         
                     except Exception as e:
                         logger.error(f"🔄 Loop #{loop_count}: ERROR getting Bay {bay_id} status: {str(e)}")
